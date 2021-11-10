@@ -17,8 +17,8 @@ class MyWidget(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.pause_image = QPixmap("pause.png")
         self.play_image = QPixmap("play.png")
-        self.next_image = QPixmap("right-arrow.png")
-        self.prev_image = QPixmap("left-arrow.png")
+        self.next_image = QPixmap("next.png")
+        self.prev_image = QPixmap("previous.png")
         self.repeating = QPixmap("repeat-button.png")
         self.repeat_image = QPixmap("repeating.png")
         self.shuffle_image = QPixmap("shuffle.png")
@@ -60,21 +60,24 @@ class MyWidget(QMainWindow, Ui_MainWindow):
         self.prevButton.setToolTip("Previous")
         self.duration = 0
         self.timer.timeout.connect(self.showtime)
-        self.changePlaylistBox.currentTextChanged.connect(self.change_playlist)
+        self.listWidget_playlist.clicked.connect(self.change_playlist)
         self.addPlayListButton.clicked.connect(self.add_playlist)
         self.addToPlaylist.clicked.connect(self.add_to_playlist)
+        self.stop_PlayButton.setShortcut('Space')
+        self.nextButton.setShortcut('N')
+        self.prevButton.setShortcut('B')
         self.onstart()
 
     def onstart(self):  # При старте программы инициализируется список аудио и комбобокс с плейлистами
         self.updateList()
         result = self.cursor.execute("""SELECT title FROM playlists""").fetchall()
         for i in result:
-            self.changePlaylistBox.addItem(i[0])
+            self.listWidget_playlist.addItem(i[0])
 
     def add_to_playlist(self):  # Добавление аудио в плейлист
         choice, ok_pressed = QInputDialog.getItem(
             self, "Выберите плейлист", "плейлист",
-            ([self.changePlaylistBox.itemText(i) for i in range(self.changePlaylistBox.count())]), 1, False)
+            ([i[1] for i in self.connection.execute("""SELECT * FROM playlists""").fetchall()]), 1, False)
         if ok_pressed:
             self.cursor.execute("""INSERT INTO main_table(title, type, playlist) VALUES(?, ?, ?)""", (
                 self.listWidget.currentItem().text(), self.lst[self.listWidget.currentRow()][1], choice,))
@@ -89,7 +92,7 @@ class MyWidget(QMainWindow, Ui_MainWindow):
             self.connection.commit()
 
     def change_playlist(self):  # Смена плейлиста
-        self.currentplaylist = self.changePlaylistBox.currentText()
+        self.currentplaylist = self.listWidget_playlist.currentItem().text()
         self.updateList()
 
     def showtime(self):  # Таймер
@@ -106,7 +109,7 @@ class MyWidget(QMainWindow, Ui_MainWindow):
                 self.play_media()
                 self.timer.start()
             else:
-                self.pause_media()
+                self.next_audio()
 
     def prev_audio(self):  # Переключение на предыдущее аудио
         if self.listWidget.currentRow() == 0:
@@ -133,14 +136,14 @@ class MyWidget(QMainWindow, Ui_MainWindow):
                 fname = QFileDialog.getOpenFileName(self, 'Выбрать аудио', '')[0]
                 if fname:
                     self.cursor.execute("""INSERT INTO main_table(title, type, playlist) VALUES(?, 2, ?)""",
-                                        (fname, self.currentplaylist))
+                                        (fname, self.currentplaylist,))
                     self.connection.commit()
             else:
                 inp, ok_pressed1 = QInputDialog.getText(self, "Введите ссылку",
                                                         "Ссылка на аудио файл")
                 if ok_pressed1:
-                    self.cursor.execute("""INSERT INTO main_table(title, type, playlist) VALUES(?, 1 ?)""",
-                                        (inp, self.currentplaylist))
+                    self.cursor.execute("""INSERT INTO main_table(title, type, playlist) VALUES(?, 1, ?)""",
+                                        (inp, self.currentplaylist,))
                     self.connection.commit()
         self.updateList()
 
