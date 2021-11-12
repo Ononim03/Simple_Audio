@@ -1,30 +1,107 @@
 import random
 import sqlite3
 import sys
+import datetime as dt
+
 from PyQt5.Qt import QUrl
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QFont, QPixmap, QIcon
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent, QMediaPlaylist
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, \
-    QFileDialog
-import datetime as dt
-from untitled import Ui_MainWindow
+    QFileDialog, QWidget
+
+from design.about import Ui_Ui
+from design.player import Ui_Form
+from design.mainwindow import Ui_MainWindow
+from design.sign import Ui_SighInForm
 
 
-class MyWidget(QMainWindow, Ui_MainWindow):
+class Main(QMainWindow, Ui_MainWindow):  # Основное окно
     def __init__(self):
         super().__init__()
         self.setupUi(self)
-        self.pause_image = QPixmap("pause.png")
-        self.play_image = QPixmap("play.png")
-        self.next_image = QPixmap("next.png")
-        self.prev_image = QPixmap("previous.png")
-        self.repeating = QPixmap("repeat-button.png")
-        self.repeat_image = QPixmap("repeating.png")
-        self.shuffle_image = QPixmap("shuffle.png")
-        self.fullvolume = QPixmap("fullvolume.png")
-        self.lowvolume = QPixmap("lowlvolume.png")
-        self.novolume = QPixmap("novolume.png")
+        self.pushButton.clicked.connect(self.check_password)
+        self.pushButton_2.clicked.connect(self.sigh_in)
+
+    def check_password(self):  # Проверка логина и пароля при входе
+        connection = sqlite3.connect('audio.sqlite')
+        cursor = connection.cursor()
+        dictionary = {}
+        for i, login, password in cursor.execute("""SELECT * FROM accounts""").fetchall():
+            dictionary[login] = password
+        connection.close()
+        if self.lineEdit.text() not in dictionary.keys():
+            self.label.setText("Wrong login")
+        else:
+            if dictionary[self.lineEdit.text()] != self.lineEdit_2.text():
+                self.label.setText("Wrong password")
+            else:
+                self.player = MyWidget(self.lineEdit.text())
+                self.player.show()
+
+    def sigh_in(self):  # Переход на окно с регистрацией
+        self.w = SighIn()
+        self.w.show()
+
+
+class SighIn(QWidget, Ui_SighInForm):  # Окно с регистрацией
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
+        self.pushButton.clicked.connect(self.check)
+        self.connection = sqlite3.connect('audio.sqlite')
+        self.cursor = self.connection.cursor()
+        self.result = self.cursor.execute("""SELECT login, password FROM accounts""").fetchall()
+        self.connection.close()
+
+    def check(self):  # Проверка пароля при регистрации
+        sequence = 'qwertyuiop asdfghjkl zxcvbnm йцукенгшщзхъ фывапролджэё ячсмитьбю'
+        logins = [i[0] for i in self.result]
+        password = self.lineEdit_2.text()
+        if self.lineEdit.text() in logins:
+            self.label_3.setText("Логин занят.")
+        else:
+            if len(password) < 9:
+                self.label_3.setText("Длина пароля должна быть больше 9 символов.")
+                return
+            if password.isdigit() or password.isalpha():
+                self.label_3.setText("Пароль должен соддержать хотя бы одну букву и цифру.")
+                return
+            if password.isupper() or password.islower():
+                self.label_3.setText("Пароль должен соддержать буквы разного регистра.")
+                return
+            for i in range(len(password) - 2):
+                if password[i: i + 3].lower() in sequence:
+                    self.label_3.setText("Пароль не должен соддержать буквы находящиеся рядом.")
+                    return
+            for i in '1234567890':
+                if i in password:
+                    self.connection = sqlite3.connect('audio.sqlite')
+                    self.cursor = self.connection.cursor()
+                    self.cursor.execute("""INSERT INTO accounts(login, password) VALUES(?, ?)""",
+                                        (self.lineEdit.text(), password,))
+                    self.connection.commit()
+                    self.connection.close()
+                    self.close()
+                    return
+            self.label_3.setText("Ошибка.")
+
+
+class MyWidget(QWidget, Ui_Form):  # Окно с плеером
+    def __init__(self, login):
+        super().__init__()
+        self.setupUi(self)
+        self.login = login
+        self.pause_image = QPixmap("icons/pause.png")
+        self.play_image = QPixmap("icons/play.png")
+        self.next_image = QPixmap("icons/next.png")
+        self.prev_image = QPixmap("icons/previous.png")
+        self.repeating = QPixmap("icons/repeat-button.png")
+        self.repeat_image = QPixmap("icons/repeating.png")
+        self.shuffle_image = QPixmap("icons/shuffle.png")
+        self.fullvolume = QPixmap("icons/fullvolume.png")
+        self.lowvolume = QPixmap("icons/lowlvolume.png")
+        self.novolume = QPixmap("icons/novolume.png")
         self.randomButton.setIcon(QIcon(self.shuffle_image))
         self.infButton.setIcon(QIcon(self.repeat_image))
         self.prevButton.setIcon(QIcon(self.prev_image))
@@ -49,7 +126,7 @@ class MyWidget(QMainWindow, Ui_MainWindow):
         self.stop_PlayButton.setToolTip("Play")
         self.DurationSlider.valueChanged.connect(self.rewind_to_duration)
         self.current_time = self.DurationSlider.value()
-        self.listWidget.clicked.connect(self.change_audio)
+        self.listWidget.itemDoubleClicked.connect(self.change_audio)
         self.nextButton.clicked.connect(self.next_audio)
         self.prevButton.clicked.connect(self.prev_audio)
         self.player.durationChanged.connect(self.change_duration)
@@ -60,40 +137,43 @@ class MyWidget(QMainWindow, Ui_MainWindow):
         self.prevButton.setToolTip("Previous")
         self.duration = 0
         self.timer.timeout.connect(self.showtime)
-        self.listWidget_playlist.clicked.connect(self.change_playlist)
+        self.listWidget_playlist.itemDoubleClicked.connect(self.change_playlist)
         self.addPlayListButton.clicked.connect(self.add_playlist)
         self.addToPlaylist.clicked.connect(self.add_to_playlist)
         self.stop_PlayButton.setShortcut('Space')
         self.nextButton.setShortcut('N')
         self.prevButton.setShortcut('B')
+        self.toolButton.clicked.connect(self.about_program)
         self.onstart()
 
     def onstart(self):  # При старте программы инициализируется список аудио и комбобокс с плейлистами
-        self.updateList()
-        result = self.cursor.execute("""SELECT title FROM playlists""").fetchall()
+        self.update_list()
+        result = self.cursor.execute("""SELECT title FROM playlists WHERE login = ?""", (self.login,)).fetchall()
         for i in result:
             self.listWidget_playlist.addItem(i[0])
 
     def add_to_playlist(self):  # Добавление аудио в плейлист
         choice, ok_pressed = QInputDialog.getItem(
             self, "Выберите плейлист", "плейлист",
-            ([i[1] for i in self.connection.execute("""SELECT * FROM playlists""").fetchall()]), 1, False)
+            ([i[1] for i in
+              self.connection.execute("""SELECT * FROM playlists WHERE login = ?""", (self.login,)).fetchall()]), 1,
+            False)
         if ok_pressed:
-            self.cursor.execute("""INSERT INTO main_table(title, type, playlist) VALUES(?, ?, ?)""", (
-                self.listWidget.currentItem().text(), self.lst[self.listWidget.currentRow()][1], choice,))
+            self.cursor.execute("""INSERT INTO main_table(title, type, playlist, login) VALUES(?, ?, ?, ?)""", (
+                self.listWidget.currentItem().text(), self.lst[self.listWidget.currentRow()][1], choice, self.login,))
             self.connection.commit()
 
     def add_playlist(self):  # Создание нового плейлиста
         inp, ok_pressed1 = QInputDialog.getText(self, "Введите название плейлиста",
                                                 "название")
         if ok_pressed1:
-            self.changePlaylistBox.addItem(inp)
-            self.cursor.execute("""INSERT INTO playlists(title) VALUES(?)""", (inp,))
+            self.listWidget_playlist.addItem(inp)
+            self.cursor.execute("""INSERT INTO playlists(title, login) VALUES(?, ?)""", (inp, self.login,))
             self.connection.commit()
 
     def change_playlist(self):  # Смена плейлиста
         self.currentplaylist = self.listWidget_playlist.currentItem().text()
-        self.updateList()
+        self.update_list()
 
     def showtime(self):  # Таймер
         time = dt.timedelta(seconds=self.time)
@@ -135,27 +215,27 @@ class MyWidget(QMainWindow, Ui_MainWindow):
             if choice == 'Файл':
                 fname = QFileDialog.getOpenFileName(self, 'Выбрать аудио', '')[0]
                 if fname:
-                    self.cursor.execute("""INSERT INTO main_table(title, type, playlist) VALUES(?, 2, ?)""",
-                                        (fname, self.currentplaylist,))
+                    self.cursor.execute(
+                        """INSERT INTO main_table(title, type, playlist, login) VALUES(?, 2, ?, login)""",
+                        (fname, self.currentplaylist, self.login,))
                     self.connection.commit()
             else:
                 inp, ok_pressed1 = QInputDialog.getText(self, "Введите ссылку",
                                                         "Ссылка на аудио файл")
                 if ok_pressed1:
-                    self.cursor.execute("""INSERT INTO main_table(title, type, playlist) VALUES(?, 1, ?)""",
-                                        (inp, self.currentplaylist,))
+                    self.cursor.execute(
+                        """INSERT INTO main_table(title, type, playlist, login) VALUES(?, 1, ?, login)""",
+                        (inp, self.currentplaylist, self.login))
                     self.connection.commit()
-        self.updateList()
+        self.update_list()
 
     def change_audio(self):  # Смена аудио
-        if self.lst[self.listWidget.currentRow()][1] == 1:
-            self.player.setMedia(QMediaContent(QUrl(
-                self.listWidget.currentItem().text()
-            )))
-        else:
-            self.player.setMedia(QMediaContent(QUrl.fromLocalFile(self.listWidget.currentItem().text())))
+        self.player.setMedia(QMediaContent(QUrl(
+            self.listWidget.currentItem().text()
+        )))
         self.from_start_label.setText("00:00")
         self.time = 0
+        self.DurationSlider.setValue(0)
         self.timer.stop()
         self.pause_media()
 
@@ -197,10 +277,10 @@ class MyWidget(QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):  # Отключение от БД
         self.connection.close()
 
-    def updateList(self):  # Инициализация списка аудио
+    def update_list(self):  # Инициализация списка аудио
         self.listWidget.clear()
         result = self.cursor.execute(
-            f"SELECT * FROM main_table WHERE playlist = '{self.currentplaylist}'").fetchall()
+            f"SELECT * FROM main_table WHERE playlist = '{self.currentplaylist}' AND login = '{self.login}'").fetchall()
         self.lst = [(i[1], i[2]) for i in result]
         for i in self.lst:
             self.listWidget.addItem(i[0])
@@ -221,14 +301,47 @@ class MyWidget(QMainWindow, Ui_MainWindow):
         self.listWidget.setCurrentRow(random.randint(0, len(self.lst) - 1))
         self.change_audio()
 
+    def about_program(self):  # открытие окна с информацией
+        self.about = AboutProgram()
+        self.about.show()
+
 
 def except_hook(cls, exception, traceback):
     sys.__excepthook__(cls, exception, traceback)
 
 
+class AboutProgram(QWidget, Ui_Ui):  # Окно с информацией о программе
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
+
+
+QSS = """
+QSlider::groove:horizontal {
+    border-radius: 1px;       
+    height: 7px;              
+    margin: -1px 0;           
+}
+QSlider::handle:horizontal {
+    background-color: rgb(85, 17, 255);
+    border: 2px solid #ff0000;
+    height: 14px;     
+    width: 12px;
+    margin: -4px 0;     
+    border-radius: 7px  ;
+    padding: -4px 0px;  
+}
+QSlider::add-page:horizontal {
+    background: darkgray;
+}
+QSlider::sub-page:horizontal {
+    background: #1abc9c;
+}
+"""
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    ex = MyWidget()
+    app.setStyleSheet(QSS)
+    ex = Main()
     ex.show()
     sys.excepthook = except_hook
     sys.exit(app.exec())
